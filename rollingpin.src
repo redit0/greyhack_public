@@ -1,0 +1,630 @@
+// ============================================================================
+// rollingpin.src
+// Written by: redit0
+// Guild: GBI (Greyhack Bureau of Investigation)
+// Date: September 13, 2025
+// Description: Tool for scanning and mass-exploiting vulnerabilities in libraries for the purpose of triggering the release of new versions
+// ============================================================================
+
+__LOG_DIR = "/root"
+__LOG_NAME = "rollingpin.log"
+__METAXPLOIT_PATH = "/root/metaxploit.so"
+
+// **main:**
+// Main entry point for the rollingpin script. Handles user interaction and library selection loop.
+// @example main() // Starts the rollingpin script
+main = function()
+    if active_user != "root" then exit(red("This script must be run as root."))
+
+    shell = get_shell
+    comp = shell.host_computer
+    file = comp.File("/")
+
+    cleanFolders(comp)
+
+    globals.__TEMP_FOLDER = "rp_" + generateUUID()
+
+    comp.create_folder(__LOG_DIR, globals.__TEMP_FOLDER)
+
+    log = Log.Init(comp)
+
+    globals.should_clear = 0
+    
+    print(green("Starting rollingpin script.  Type 'exit' or 'quit' at any prompt to exit.") + char(10), 1)
+    log.Write("Started rollingpin script.")
+
+    print(orange("Creating folder to store temporary files: " + __LOG_DIR + "/" + globals.__TEMP_FOLDER))
+    print(orange("This folder is writeable by all users and guest.  It will be deleted automatically, but remember to delete it manually if the script crashes.") + char(10) + char(10))
+
+    folder = comp.File(__LOG_DIR + "/" + globals.__TEMP_FOLDER)
+    if not folder then exit(red("Could not create temporary folder for logs."))
+    log.Write("Created temporary folder: " + __LOG_DIR + "/" + globals.__TEMP_FOLDER)
+    folder.chmod("o+rwx")
+    folder.chmod("g+rwx")
+    folder.chmod("u+rwx")
+
+    while true
+        apt = getAptClient(file)
+
+        if not apt then
+            folder.delete()
+            exit(red("Could not load aptclient library."))
+        end if
+
+        if globals.should_clear then
+            clear_screen()
+        else
+            globals.should_clear = 1
+        end if
+
+        metax = getMetax(comp, apt, log)
+
+        if not metax then
+            folder.delete()
+            exit(red("Could not load metaxploit library."))
+        end if
+
+        updateLibs(comp, apt, metax)
+
+        libs = find(file, "*.so", "b")
+
+        tempList = []
+
+        for lib in libs
+            if lib.path[:4] == "/lib" then
+                metaLib = metax.load(lib.path)
+
+                log.Write("Loaded library: " + lib.name + " v" + metaLib.version)
+
+                name = lib.name
+
+                if name.indexOf("_") != null then
+                    name = lib.name[:lib.name.indexOf("_")] + ".so"
+                end if
+
+                spacer = 22 - name.len
+
+                tempLib = {
+                    "file": lib,
+                    "metaLib": metaLib,
+                    "sortKey": name + "_" + metaLib.version,
+                    "text": name + " " + "."*spacer + " v" + metaLib.version }
+
+                tempList.push(tempLib)
+            end if
+        end for
+
+        libraries = {}
+        count = 1
+
+        for lib in tempList.sort("sortKey", 0)
+            libraries[str(count)] = lib
+            count = count + 1
+        end for
+
+        if libraries.indexes.len == 0 then
+            folder.delete()
+            exit(red("No libraries found."))
+        end if
+
+        output = "<size=120%><voffset=0.5em>Libraries:</voffset></size>" + char(10)
+
+        for key in libraries.indexes
+            output = output + "    " + white(str(key) + "." + char(9) + libraries[key].text) + char(10)
+        end for
+
+        output = output + char(10) + white("<b>Select a library:</b> ")
+
+        choice = user_input(white(output), 0, 0, 0)
+
+        if choice == "exit" or choice == "quit" then exitRollingPin(folder, log)
+
+        if not libraries.hasIndex(choice) then
+            print(red("Invalid selection..."))
+            wait(1.5)
+            continue
+        end if
+
+        exploits = {}
+
+        metaLib = libraries[choice].metaLib
+        metaFile = libraries[choice].file
+
+        addresses = metax.scan(metaLib)
+
+        count = 1
+        for address in addresses
+            print(blue("Scanning memory address: " + address + " in " + metaFile.name))
+            log.Write("Scanning memory address: " + address + " in " + metaFile.name)
+
+            vulns = metax.scan_address(metaLib, address).split("Unsafe check: ")[1:]
+
+            for vuln in vulns
+                value = vuln[vuln.indexOf("<b>")+3:vuln.indexOf("</b>")]
+                log.Write("Found potential exploit: " + value + " at address " + address + " in " + metaFile.name + " (" + metaLib.version + ")")
+
+                exploit = Exploit.New(metaLib, address, value)
+                exploit.Overflow(folder, log)
+                exploits[str(count)] = exploit
+                count = count + 1
+            end for
+        end for
+
+        output = white(char(10) + "<size=150%>" + metaFile.name + "  v" + metaLib.version + "</size>") + char(10)
+        output = output + char(10) + blue("<size=120%><voffset=0.5em>#<pos=70>Address<pos=220>Value<pos=600>Type<pos=800>User</voffset></size>")
+        output = output + char(10) + gray("<voffset=0.5em>-------------------------------------------------------------------------------</voffset>")
+
+        for key in exploits.indexes
+            exploit = exploits[key]
+            output = output + char(10) + white("<voffset=0.5em>" + key + "<pos=70>" + exploit.address + "<pos=220>" + exploit.unsafeString + "<pos=600>" + exploit.result_text + "<pos=800>" + exploit.result_user + "</voffset>")
+        end for
+
+        output = output + char(10) + gray("<voffset=0.5em>-------------------------------------------------------------------------------</voffset>")
+        output = output + char(10) + char(10) + white("Select an exploit to roll: ")
+
+        choice = user_input(output, 0, 0, 0)
+
+        if choice == "exit" or choice == "quit" then exitRollingPin(folder, log)
+
+        if not exploits.hasIndex(choice) then
+            print(red("Invalid selection..."))
+            wait(2)
+            continue
+        end if
+
+        exploit = exploits[choice]
+        print(blue("Rolling exploit: " + exploit.unsafeString + " at address " + exploit.address + " in " + metaFile.name))
+        log.Write("Rolling exploit: " + exploit.unsafeString + " at address " + exploit.address + " in " + metaFile.name)
+
+        for i in range(35)
+            exploit.Overflow(folder, log)
+        end for
+
+        print(green("Exploit rolled.  It may take up to 15 minutes for a new version of the library to become available."))
+        choice = user_input(white("Press <b>ENTER</b> to continue..."), 0, 0, 0)
+
+        if choice == "exit" or choice == "quit" then exitRollingPin(folder, log)
+    end while
+
+    exitRollingPin(folder, log)
+end function
+
+// **exitRollingPin:**
+// Cleans up and exits the rollingpin script, deleting temp folder and logging exit.
+// @param {file} folder - The temporary folder to delete.
+// @param {object} log - The log object for logging exit.
+// @example exitRollingPin(folder, log) // Exits and cleans up
+exitRollingPin = function(folder, log)
+    log.Write("Exiting...")
+    print(green("Exiting..."))
+    folder.delete()
+    wait(1.5)
+    clear_screen()
+    exit()
+end function
+
+// **updateLibs:**
+// Checks for upgrades to libraries and installs new versions if available.
+// @param {object} comp - The computer object.
+// @param {object} apt - The aptclient object.
+// @param {object} metax - The metaxploit library object.
+// @example updateLibs(comp, apt, metax) // Upgrades libraries if needed
+updateLibs = function(comp, apt, metax)
+    file = comp.File("/")
+    log = Log.Init(comp)
+
+    libs = find(file, "*.so", "b")
+
+    for lib in libs
+        if lib.path[:4] == "/lib" and lib.name.indexOf("_") == null then
+            metaLib = metax.load(lib.path)
+            name = lib.name
+            v = metaLib.version
+            if apt.check_upgrade(lib.path) then
+                lib.copy("/lib", name.replace("\.so", "") + "_" + v.replace("\.", "") + ".so")
+
+                result = apt.install(name)
+
+                if typeof(result) == "string" then
+                    log.Write("Error upgrading library: " + name + " - " + result, Log.__ERROR)
+                    print(red("Error upgrading library: " + name + " - " + result))
+                    continue
+                end if
+
+                metaLib = metax.load("/lib/" + name)
+
+                log.Write("Upgraded library: " + name + " from version " + v + " to version " + metaLib.version)
+            end if
+        end if
+    end for
+end function
+
+
+// **Find:**
+// Finds files (and folders) matching a pattern with optional flags.  Use * as a wildcard character.
+// @description **Flags:**
+// @description  b - Binary Files (excluding folders)
+// @description  f - Folders Only
+// @description  t - Text Files
+// @description  r - Can Read
+// @description  w - Can Write
+// @description  x - Can Execute
+// @example find(file, "*.so", "br") // Finds all readable libraries (binary files ending in ".so" with the permission "r")
+// @example find(file, "passwd", "t") // Finds all text files named "passwd"
+// @example find(file, "guest", "f") // Finds all folders named "guest"
+// @param {file} file - The starting file or folder.
+// @param {string} name - The pattern to match file names against.
+// @param {string|null} flags - Optional flags to filter results.
+// @return {list<file>} - The list of matching files.
+//
+find = function(file, name, flags = null)
+    pattern = name.replace("\.", "\.").replace("\*", ".*")
+    b = flags != null and flags.indexOf("b") != null // Binary Files
+    f = flags != null and flags.indexOf("f") != null // Folders
+    t = flags != null and flags.indexOf("t") != null // Text Files
+    r = flags != null and flags.indexOf("r") != null // Can Read
+    w = flags != null and flags.indexOf("w") != null // Can Write
+    x = flags != null and flags.indexOf("x") != null // Can Execute
+
+    results = []
+
+    if file.name.is_match(pattern, "i") or file.path == name then
+        isMatch = 1
+
+        if b and (not file.is_binary or file.is_folder) then isMatch = 0
+        if f and not file.is_folder then isMatch = 0
+        if t and file.is_binary then isMatch = 0
+        if r and not file.has_permission("r") then isMatch = 0
+        if w and not file.has_permission("w") then isMatch = 0
+        if x and not file.has_permission("x") then isMatch = 0
+
+        if isMatch then results.push(file)
+    end if
+    
+    if file.is_folder then
+        files = file.get_files + file.get_folders
+
+        for temp in files
+            results = results + find(temp, name, flags)
+        end for
+    end if
+
+    return results
+end function
+
+// **GenerateUUID:**
+// Generates a random UUID v4 string.
+// @return {string} - The generated UUID.
+// @example generateUUID() // Generates a new UUID string
+//
+generateUUID = function()
+    // Generate random hex characters
+    randomHex = function(length)
+        chars = "0123456789abcdef"
+        result = ""
+        for i in range(0, length - 1)
+            result = result + chars[floor(rnd * 16)]
+        end for
+        return result
+    end function
+    
+    // Generate UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    uuid = randomHex(8) + "-" + randomHex(4) + "-4" + randomHex(3) + "-"
+    
+    // For the y position, first digit must be 8, 9, a, or b
+    yChars = "89ab"
+    uuid = uuid + yChars[floor(rnd * 4)] + randomHex(3) + "-" + randomHex(12)
+    
+    return uuid
+end function
+
+// **getMetax:**
+// Loads the metaxploit library from the given file system.
+// @param {comp} computer - The starting computer object.
+// @return {object|null} - The loaded metaxploit library or null if not found.
+// @example getMetax(comp) // Loads metaxploit from the file system
+//
+getMetax = function(comp, apt, log)
+    __metax = comp.File(__METAXPLOIT_PATH)
+
+    if not __metax or apt.check_upgrade(__METAXPLOIT_PATH) then
+        log.Write("Installing or upgrading metaxploit library...")
+        result = apt.install("metaxploit.so", __METAXPLOIT_PATH.split("/")[:-1].join("/"))
+
+        if typeof(result) == "string" then
+            log.Write("Error upgrading library: " + name + " - " + result, Log.__ERROR)
+            print(red("Error upgrading library: " + name + " - " + result))
+        end if
+    end if
+
+    metax = include_lib(__metax.path)
+    if not metax then return null
+
+    return metax
+end function
+
+// **getAptClient:**
+// Loads the aptclient library from the given file system.
+// @param {file} file - The starting file object.
+// @return {object|null} - The loaded aptclient library or null if not found.
+// @example getAptClient(file) // Loads aptclient from the file system
+//
+getAptClient = function(file)
+    __aptclient = find(file, "aptclient.so", "b").push(null)[0]
+    if not __aptclient then return null
+
+    aptclient = include_lib(__aptclient.path)
+    if not aptclient then return null
+
+    aptclient.update()
+
+    return aptclient
+end function
+
+// **cleanFolders:**
+// Deletes old temporary folders created by rollingpin in the log directory.
+// @param {object} comp - The computer object.
+// @example cleanFolders(comp) // Cleans up old temp folders
+cleanFolders = function(comp)
+    log = Log.Init(comp)
+    folders = find(comp.File("/"), "rp_*", "f")
+
+    for folder in folders
+        if folder.path[:__LOG_DIR.len] == __LOG_DIR then
+            log.Write("Deleting old temporary folder: " + folder.path)
+            folder.delete()
+        end if
+    end for
+end function
+
+// **getUser:**
+// Determines the owner of a created file in a folder using a shell or computer object.
+// @param {object} obj - The shell or computer object.
+// @param {file} folder - The folder to create the file in.
+// @param {object} log - The log object for error reporting.
+// @return {string} - The owner of the created file.
+// @example getUser(shell, folder, log) // Returns the owner of a file created by shell in folder
+getUser = function(obj, folder, log)
+    if not obj then return "unknown"
+
+    if typeof(obj) == "shell" then
+        comp = obj.host_computer
+    else if typeof(obj) == "computer" then
+        comp = obj
+    else
+        return "unknown"
+    end if
+
+    if not comp then
+        log.Write("Variable 'comp' is null in getUser()", Log.__ERROR)
+        return "unknown"
+    end if
+
+    filename = generateUUID()
+
+    comp.touch(folder.path, filename)
+
+    file = comp.File(folder.path + "/" + filename)
+
+    if not file then
+        log.Write("Variable 'file' is null in getUser()", Log.__ERROR)
+        return "unknown"
+    end if
+
+    owner = file.owner
+    file.delete()
+
+    return owner
+end function
+
+// **getUserFromFile:**
+// Determines the user associated with a file by traversing its parent directories.
+// @param {file} file - The file to check.
+// @return {string} - The user associated with the file.
+// @example getUserFromFile(file) // Returns the user for the given file
+getUserFromFile = function(file)
+    while file.path != "/"
+        file = file.parent
+    end while
+
+    if file.has_permission("w") then
+        return "root"
+    end if
+
+    for folder in file.get_folders
+        if folder.name == "home" then
+            for userDir in folder.get_folders
+                if userDir.has_permission("w") and userDir.name != "guest" then
+                    return userDir.name
+                end if
+            end for
+        end if
+    end for
+
+    return "guest (?)"
+end function
+
+// **red:**
+// Formats text in red color for output.
+// @param {string} text - The text to format.
+// @return {string} - The formatted text.
+// @example red("Error message") // Returns red colored error message
+red = function(text)
+    return "<color=#C10A00><b>" + text + "</b></color>"
+end function
+
+// **green:**
+// Formats text in green color for output.
+// @param {string} text - The text to format.
+// @return {string} - The formatted text.
+// @example green("Success message") // Returns green colored success message
+green = function(text)
+    return "<color=#00C10A><b>" + text + "</b></color>"
+end function
+
+// **white:**
+// Formats text in white color for output.
+// @param {string} text - The text to format.
+// @return {string} - The formatted text.
+// @example white("Info message") // Returns white colored info message
+white = function(text)
+    return "<color=#EEEEEE><b>" + text + "</b></color>"
+end function
+
+// **blue:**
+// Formats text in blue color for output.
+// @param {string} text - The text to format.
+// @return {string} - The formatted text.
+// @example blue("Notice message") // Returns blue colored notice message
+blue = function(text)
+    return "<color=#0096FF><b>" + text + "</b></color>"
+end function
+
+// **yellow:**
+// Formats text in yellow color for output.
+// @param {string} text - The text to format.
+// @return {string} - The formatted text.
+// @example yellow("Warning message") // Returns yellow colored warning message
+yellow = function(text)
+    return "<color=#FFFF00><b>" + text + "</b></color>"
+end function
+
+// **orange:**
+// Formats text in orange color for output.
+// @param {string} text - The text to format.
+// @return {string} - The formatted text.
+// @example orange("Alert message") // Returns orange colored alert message
+orange = function(text)
+    return "<color=#FFA500><b>" + text + "</b></color>"
+end function
+
+// **gray:**
+// Formats text in gray color for output.
+// @param {string} text - The text to format.
+// @return {string} - The formatted text.
+// @example gray("Info message") // Returns gray colored info message
+gray = function(text)
+    return "<color=#b3b3b3><b>" + text + "</b></color>"
+end function
+
+Exploit = {
+    "classID": "Exploit",
+    "metaLib": null,
+    "address": null,
+    "unsafeString": null,
+    "result": null,
+    "result_type": null,
+    "result_user": null,
+    "result_text": null }
+
+// **Exploit.Overflow:**
+// Executes the overflow exploit using the Exploit object.
+// @param {string} arg - Optional argument for the overflow.
+// @return {any} - The result of the overflow operation.
+// @example Exploit.Overflow("192.168.0.2") // Executes overflow with argument
+Exploit.Overflow = function(folder, log, arg = "")
+    self.result = self.metaLib.overflow(self.address, self.unsafeString, arg)
+
+    if self.result == null then
+        self.result_type = "null"
+        self.result_user = gray("<i>unknown</i>")
+        self.result_text = gray("<i>null</i>")
+        return null
+    end if
+
+    type = typeof(self.result)
+    self.result_type = type
+
+    if type == "shell" then
+        user = getUser(self.result, folder, log)
+        self.result_text = red("shell")        
+    else if type == "computer" then
+        user = getUser(self.result, folder, log)
+        self.result_text = orange("computer")
+    else if type == "file" then
+        user = getUserFromFile(self.result)
+        self.result_text = yellow("file")
+    else
+        user = "unknown"
+        self.result_text = blue(type)
+    end if
+
+    if user == "root" then
+        self.result_user = red(user)
+    else if user == "guest" or user == "guest (?)" then
+        self.result_user = yellow(user)
+    else if user == "unknown" then
+        self.result_user = gray("unknown")
+    else
+        self.result_user = orange(user)
+    end if
+    
+    return self.result
+end function
+
+// **Exploit.New:**
+// Creates a new Exploit object with the given parameters.
+// @param {object} metaLib - The metaxploit library object.
+// @param {string} address - The target address.
+// @param {string} unsafeString - The exploit string.
+// @return {object} - The new Exploit object.
+// @example Exploit.New(metaLib, "0x6E25996", "imagepatic_tr_scroller32") // Creates a new exploit instance
+Exploit.New = function(metaLib, address, unsafeString)
+    exploit = new self
+
+    exploit.metaLib = metaLib
+    exploit.address = address
+    exploit.unsafeString = unsafeString
+
+    return exploit
+end function
+
+Log = {
+    "classID": "Log",
+    "__ERROR": "Error",
+    "__WARNING": "Warning",
+    "__INFO": "Info" }
+
+// **Log.Init:**
+// Initializes the log file for the script.
+// @param {object} comp - The computer object.
+// @return {object} - The Log object.
+// @example Log.Init(comp) // Initializes and returns a log object
+Log.Init = function(comp)
+    __log = comp.File(__LOG_DIR + "/" + __LOG_NAME)
+
+    if not __log then
+        __result = comp.touch(__LOG_DIR, __LOG_NAME)
+
+        if typeof(__result) == "string" then
+            print(red("Error: Could not create log file: " + __result))
+        end if
+
+        __log = comp.File(__LOG_DIR + "/" + __LOG_NAME)
+    end if
+
+    log = new self
+    log.__FILE = __log
+
+    return log
+end function
+
+// **Log.Write:**
+// Writes a log entry to the log file.
+// @param {string} text - The log message.
+// @param {string|null} level - The log level (optional).
+// @example Log.Write("Started script", Log.__INFO) // Writes an info log entry
+Log.Write = function(text, level = null)
+    if not level then level = self.__INFO
+
+    content = self.__FILE.get_content
+    if content == null then return false
+
+    if content != "" then content = content + char(10)
+
+    content = content + current_date + char(9) + char(9) + "[" + level + "]" + char(9) + text
+
+    self.__FILE.set_content(content)
+end function
+
+main()
