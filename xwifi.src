@@ -1,0 +1,255 @@
+// **Find:**
+// Finds files (and folders) matching a pattern with optional flags.  Use * as a wildcard character.
+// @description **Flags:**
+// @description  b - Binary Files (excluding folders)
+// @description  f - Folders Only
+// @description  t - Text Files
+// @description  r - Can Read
+// @description  w - Can Write
+// @description  x - Can Execute
+// @example g.func.find(file, "*.so", "br") // Finds all readable libraries (binary files ending in ".so" with the permission "r")
+// @example g.func.find(file, "passwd", "t") // Finds all text files named "passwd"
+// @example g.func.find(file, "guest", "f") // Finds all folders named "guest"
+// @param {file} file - The starting file or folder.
+// @param {string} name - The pattern to match file names against.
+// @param {string|null} flags - Optional flags to filter results.
+// @return {list<file>} - The list of matching files.
+find = function(file, name, flags = null)
+    pattern = name.replace("\.", "\.").replace("\*", ".*")
+    b = flags != null and flags.indexOf("b") != null // Binary Files
+    f = flags != null and flags.indexOf("f") != null // Folders
+    t = flags != null and flags.indexOf("t") != null // Text Files
+    r = flags != null and flags.indexOf("r") != null // Can Read
+    w = flags != null and flags.indexOf("w") != null // Can Write
+    x = flags != null and flags.indexOf("x") != null // Can Execute
+
+    results = []
+
+    if file.name.is_match(pattern) then
+        isMatch = 1
+
+        if b and (not file.is_binary or file.is_folder) then isMatch = 0
+        if f and not file.is_folder then isMatch = 0
+        if t and file.is_binary then isMatch = 0
+        if r and not file.has_permission("r") then isMatch = 0
+        if w and not file.has_permission("w") then isMatch = 0
+        if x and not file.has_permission("x") then isMatch = 0
+
+        if isMatch then results.push(file)
+    end if
+    
+    if file.is_folder then
+        files = file.get_files + file.get_folders
+
+        for temp in files
+            results = results + find(temp, name, flags)
+        end for
+    end if
+
+    return results
+end function
+
+vars = {}
+
+vars.green = "<color=#81eb00><b>"
+vars.darkgreen = "<color=#007700><b>"
+vars.cyan = "<color=#0cddf2><b>"
+vars.blue = "<color=#3366ff><b>"
+vars.yellow = "<color=#dbd700><b>"
+vars.orange = "<color=#ffa500><b>"
+vars.magenta = "<color=#b0509e><b>"
+vars.red = "<color=#c30000><b>"
+vars.white = "<color=#eeeeee><b>"
+vars.lightgray = "<color=#b3b3b3><b>"
+vars.endcolor = "</b></color>"
+
+crypto = find(get_shell.host_computer.File("/"), "crypto.so", "b")[0]
+
+cryptools = include_lib(crypto.path)
+if not cryptools then exit(vars.red + "[Error] Could not find crypto.so" + vars.endcolor)
+
+airmonResult = airmon(cryptools, "start", "wlan0")
+
+if typeof(airmonResult) == "string" then
+	exit(vars.red + "[Error] Could not start monitor mode: " + airmonResult + vars.endcolor)
+else
+	print(vars.darkgreen + "Monitoring mode started successfully" + vars.endcolor)
+end if
+
+//// FUNCTIONS
+
+
+alreadyCracked = function(results, network)
+	for result in results
+		networkName = result.split(" ")[1]
+		
+		if networkName == network then return 1
+	end for
+
+	return 0
+end function
+
+formatResults = function(results, colors = 0)
+	list = []
+	
+	for line in results
+		parsed = line.split(" ")
+		
+		item = {}
+		
+		item.str = parsed[0]
+		item.net = parsed[1]
+		item.pass = parsed[2]
+		
+		list.push(item)
+	end for
+
+	list.sort("net")
+
+	results = []
+	
+	for item in list
+		newLine = item.str + " " + item.net + " " + item.pass
+		results.push(newLine)
+	end for
+
+	if colors then
+		temp = vars.yellow + "Strength Network Password" + vars.endcolor
+	
+		for line in results
+			temp = temp + char(10) + vars.green + line + vars.endcolor
+		end for
+	else
+		temp = "Strength Network Password"
+	
+		for line in results
+			temp = temp + char(10) + line
+		end for	
+	end if
+	
+	return format_columns(temp)
+end function
+
+writeResults = function(results, file)
+	text = formatResults(results)
+	
+	file.set_content(text)
+end function
+
+cleanResults = function(results)
+	if results.len > 0 then
+		print(vars.blue + "Cleaning Results..." + vars.endcolor)
+		for index in range(results.len - 1)
+			results[index] = replace_regex(results[index], "\s+", " ")
+		end for
+	end if
+end function
+
+removeStaleNetworks = function(results, networks)
+	print(vars.blue + "Removing stale networks..." + vars.endcolor)
+
+	for result in results
+		essid = result.split(" ")[1]
+	
+		current = 0
+	
+		for network in networks
+			networkName = network.split(" ")[2]
+		
+			if essid == networkName then
+				current = 1
+				break
+			end if
+		end for
+
+		if not current then
+			print(vars.red + "Removing: " + essid + vars.endcolor)
+			index = results.indexOf(result)
+			results.remove(index)
+		end if	
+	end for
+end function
+
+
+//// END FUNCTIONS
+
+
+outputFile = "wifi.txt"
+comp = get_shell.host_computer
+file = comp.File(current_path + "/" + outputFile)
+networks = comp.wifi_networks("wlan0")
+results = []
+
+
+if file and file.has_permission("r") then
+	content = file.get_content
+	
+	if content then
+		print(vars.blue + "Loading previous results..." + vars.endcolor)
+		results = content.split(char(10))[1:]
+	end if
+else
+	print(vars.orange + "Could not load previous results, starting over..." + vars.endcolor)
+	comp.touch(current_path, outputFile)
+	file = comp.File(current_path + "/" + outputFile)
+end if
+
+cleanResults(results)
+
+removeStaleNetworks(results, networks)
+
+networkList = []
+
+for network in networks
+	parsed = network.split(" ")
+	
+	bssid = parsed[0]
+	pwr = parsed[1][:-1].to_int
+	essid = parsed[2]
+	acks = ceil(300000 / (pwr + 15))
+
+	item = {"bssid":bssid,"pwr":pwr,"essid":essid,"acks":acks}
+	networkList.push(item)
+end for
+
+networkList.sort("pwr")
+networkList.reverse
+
+for item in networkList
+	bssid = item.bssid
+	pwr = item.pwr
+	essid = item.essid
+	acks = item.acks
+	
+	if alreadyCracked(results, essid) then
+		print(vars.darkgreen + "Skipping " + essid + ", already cracked." + vars.endcolor)
+		continue
+	end if
+	
+	if pwr < 1 then
+		print(vars.orange + "Skipping " + essid + ", strength " + pwr + "%." + vars.endcolor)
+		continue
+	end if
+	
+	print(vars.yellow + "Cracking " + essid + ", " + acks + " acks." + vars.endcolor)
+	aireplayResult = cryptools.aireplay(bssid, essid, acks)
+	
+	if typeof(aireplayResult) == "string" then
+		print(vars.red + "[Error] " + aireplayResult + vars.endcolor)
+		continue
+	end if
+
+	pwd = cryptools.aircrack(current_path + "/file.cap")
+
+	results.push(pwr + " " + essid + " " + pwd)
+	
+	writeResults(results, file)
+	
+	print(vars.green + pwr + " " + essid + " " + pwd + vars.endcolor)
+end for
+
+cap = comp.File(current_path + "/file.cap")
+
+if cap then cap.delete
+
+print(formatResults(results, 1))

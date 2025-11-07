@@ -1,0 +1,153 @@
+green = function(str)
+    return "<color=#81eb00><b>"+str+"</b></color>"
+end function
+
+magenta = function(str)
+    return "<color=#b0509e><b>"+str+"</b></color>"
+end function
+
+red = function(str)
+    return "<color=#c30000><b>"+str+"</b></color>"
+end function
+
+// **Find:**
+// Finds files (and folders) matching a pattern with optional flags.  Use * as a wildcard character.
+// @description **Flags:**
+// @description  b - Binary Files (excluding folders)
+// @description  f - Folders Only
+// @description  t - Text Files
+// @description  r - Can Read
+// @description  w - Can Write
+// @description  x - Can Execute
+// @example g.func.find(file, "*.so", "br") // Finds all readable libraries (binary files ending in ".so" with the permission "r")
+// @example g.func.find(file, "passwd", "t") // Finds all text files named "passwd"
+// @example g.func.find(file, "guest", "f") // Finds all folders named "guest"
+// @param {file} file - The starting file or folder.
+// @param {string} name - The pattern to match file names against.
+// @param {string|null} flags - Optional flags to filter results.
+// @return {list<file>} - The list of matching files.
+find = function(file, name, flags = null)
+    pattern = name.replace("\.", "\.").replace("\*", ".*")
+    b = flags != null and flags.indexOf("b") != null // Binary Files
+    f = flags != null and flags.indexOf("f") != null // Folders
+    t = flags != null and flags.indexOf("t") != null // Text Files
+    r = flags != null and flags.indexOf("r") != null // Can Read
+    w = flags != null and flags.indexOf("w") != null // Can Write
+    x = flags != null and flags.indexOf("x") != null // Can Execute
+
+    results = []
+
+    if file.name.is_match(pattern) then
+        isMatch = 1
+
+        if b and (not file.is_binary or file.is_folder) then isMatch = 0
+        if f and not file.is_folder then isMatch = 0
+        if t and file.is_binary then isMatch = 0
+        if r and not file.has_permission("r") then isMatch = 0
+        if w and not file.has_permission("w") then isMatch = 0
+        if x and not file.has_permission("x") then isMatch = 0
+
+        if isMatch then results.push(file)
+    end if
+    
+    if file.is_folder then
+        files = file.get_files + file.get_folders
+
+        for temp in files
+            results = results + find(temp, name, flags)
+        end for
+    end if
+
+    return results
+end function
+
+//// Functions
+
+getLines = function()
+    file = find(get_shell.host_computer.File("/"), "wifi.txt", "tr")[0]
+    if not file then print(red("[Error] Could not find readable wifi.txt"))
+
+    lines = file.get_content.split("\n")[1:]
+
+    if lines.len == 0 then
+        exit(red("[Error] The wifi.txt file is empty"))
+    end if
+
+    for index in range(lines.len - 1)
+        lines[index] = replace_regex(lines[index], "\s+", " ")
+    end for
+
+    return lines
+end function
+
+getBssid = function(name)
+    networks = get_shell.host_computer.wifi_networks("wlan0")
+
+    for network in networks
+        parsed = network.split(" ")
+
+        bssid = parsed[0]
+        essid = parsed[2]
+
+        if essid == name then return bssid
+    end for
+
+    return null
+end function
+
+getRandom = function(max)
+    return floor(rnd * max)
+end function
+
+getNetwork = function()
+    lines = getLines
+    max = lines.len
+    index = getRandom(max)
+    parsed = lines[index].split(" ")
+
+    network = {}
+
+    network["name"] = parsed[1]
+    network["pass"] = parsed[2]
+
+    return network
+end function
+
+//// End Functions
+
+if params.len == 1 and ["-h", "--help"].indexOf(params[0]) != null then
+    exit(magenta("<b>Usage: nomad [interval in seconds]</b>"))
+else if params.len > 1 then
+    exit(magenta("<b>Usage: nomad [interval in seconds]</b>"))
+else if params.len == 1 and typeof(params[0].to_int) != "number" then
+    exit(magenta("<b>Usage: nomad [interval in seconds]</b>"))
+end if
+
+if params.len == 1 then
+    interval = params[0].to_int
+else
+    interval = 60
+end if
+
+count = 0
+lastNetwork = null
+
+print(magenta("Nomad running..."))
+
+while true
+    network = getNetwork()
+
+    while network["name"] == lastNetwork
+        network = getNetwork()
+    end while
+
+    print(green("Connecting to " + network["name"] + "..."))
+
+    lastNetwork = network["name"]
+
+    bssid = getBssid(network["name"])
+
+    get_shell.host_computer.connect_wifi("wlan0", bssid, network["name"], network["pass"])
+
+    wait(interval)
+end while
