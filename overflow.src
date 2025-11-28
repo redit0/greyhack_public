@@ -1,0 +1,61 @@
+program = program_path.split("/")[-1]
+
+if params == null or not params isa list or params.len < 2 or params.len > 3 or not is_valid_ip(params[0]) or not typeof(params[1].to_int) == "number" then
+    exit(program + " [ip] [port] [optional: password or LAN Address]" + char(10) + "example: " + program + " 23.45.67.89 22 newpassword")
+end if
+
+ip = params[0]
+port = params[1].to_int
+extra = null
+
+if params.len == 3 then extra = params[2]
+
+metax = include_lib(current_path + "/metaxploit.so")
+if not metax then
+    metax = include_lib("/lib/metaxploit.so")
+end if
+
+if not metax then exit("Could not load metaxploit.so")
+
+netSession = metax.net_use(ip, port)
+if not netSession then print "Could not connect to " + ip + ":" + port
+
+metalib = netSession.dump_lib
+
+print "<b><color=#85b8ff>Library: " + metalib.lib_name + "</color></b>", 1
+print "<b><color=#85b8ff>Version: " + metalib.version + "</color></b>" + char(10)
+
+addresses = metax.scan(metalib)
+
+exploits = []
+
+print char(10)
+
+for address in addresses
+    vulns = metax.scan_address(metalib, address).split("Unsafe check: ")[1:]
+
+    for vuln in vulns
+        start = vuln.indexOf("<b>") + 3
+        finish = vuln.indexOf("</b>")
+        value = vuln[start:finish]
+        print "<b><color=#eeeeee>Discovered vulnerability (Address: " + address + ", Value: " + value + ")</color></b>"
+        exploits.push({"address":address,"value":value})
+    end for
+end for
+
+print char(10)
+
+for exploit in exploits
+    print char(10) + "<b><color=#dcdcaa>Running overflow: [" + exploit.address + ", " + exploit.value + "]</color></b>"
+    
+    if extra then
+        result = metalib.overflow(exploit.address, exploit.value, extra)
+    else
+        result = metalib.overflow(exploit.address, exploit.value)
+    end if
+
+    if not result then continue
+
+    print "<b><color=#c30000>Obtained " + typeof(result) + " from exploit.</color></b>" + char(10)
+    // If you want to do something with the shell, computer, file, etc that you get from the overflow, it is stored in the variable `result` assigned above.
+end for
