@@ -1,0 +1,53 @@
+// **Find:**
+// Finds files (and folders) matching a pattern with optional flags.  Use * as a wildcard character.
+// @description **Flags:**
+// @description  b - Binary Files (excluding folders)
+// @description  f - Folders Only
+// @description  t - Text Files
+// @description  r - Can Read
+// @description  w - Can Write
+// @description  x - Can Execute
+// @description  l - Include Symlinks
+// @example find(file, "*.so", "br") // Finds all readable libraries (binary files ending in ".so" with the permission "r")
+// @example find(file, "passwd", "t") // Finds all text files named "passwd"
+// @example find(file, "guest", "f") // Finds all folders named "guest"
+// @param {file} file - The starting file or folder.
+// @param {string} name - The pattern to match file names against.
+// @param {string|null} flags - Optional flags to filter results.
+// @return {list<file>} - The list of matching files.
+find = function(file, name, flags = null)
+    pattern = name.replace("\.", "\.").replace("\*", ".*")
+    b = flags != null and flags.indexOf("b") != null // Binary Files
+    f = flags != null and flags.indexOf("f") != null // Folders
+    t = flags != null and flags.indexOf("t") != null // Text Files
+    r = flags != null and flags.indexOf("r") != null // Can Read
+    w = flags != null and flags.indexOf("w") != null // Can Write
+    x = flags != null and flags.indexOf("x") != null // Can Execute
+    l = flags != null and flags.indexOf("l") != null // Include Symlinks
+
+    results = []
+
+    if file.name.is_match("^" + pattern, "i") or file.path == name then
+        isMatch = 1
+
+        if b and (not file.is_binary or file.is_folder) then isMatch = 0
+        if f and not file.is_folder then isMatch = 0
+        if t and file.is_binary then isMatch = 0
+        if r and not file.has_permission("r") then isMatch = 0
+        if w and not file.has_permission("w") then isMatch = 0
+        if x and not file.has_permission("x") then isMatch = 0
+        if not l and file.is_symlink then isMatch = 0
+
+        if isMatch then results.push(file)
+    end if
+    
+    if file.is_folder then
+        files = file.get_files + file.get_folders
+
+        for temp in files
+            results = results + find(temp, name, flags)
+        end for
+    end if
+
+    return results
+end function
