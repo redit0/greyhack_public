@@ -107,14 +107,14 @@ if not is_valid_ip(address) then exit(red("[Error] Invalid IP Address"))
 
 isLan = is_lan_ip(address)
 
-outputBuffer.push(title)
-outputBuffer.push(white("<size=110%><b>" + address + "</b></size>" + char(10)))
-
 if isLan then
     router = get_router
 else
     router = get_router(address)
 end if
+
+outputBuffer.push(title)
+outputBuffer.push(white("<size=110%><b>" + router.public_ip + "</b></size>" + char(10)))
 
 lines = whois(router.public_ip).split("\n")
 
