@@ -98,9 +98,9 @@ if params.len == 1 then
     address = params[0]
 else
     print title
-    print white("[RECON] Let's find out about your target...")
+    print white("<b>[RECON] Let's find out about your target...</b>")
 
-    address = user_input("Please enter an IP address: ")
+    address = user_input(white("<b>Please enter an IP address:</b> "))
 end if
 
 if not is_valid_ip(address) then exit(red("[Error] Invalid IP Address"))
