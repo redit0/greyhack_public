@@ -1,0 +1,201 @@
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+////////              COLORS              ////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+
+green = function(str)
+    return "<color=#337733>" + str + "</color>"
+end function
+
+red = function(str)
+    return "<color=#c30000>" + str + "</color>"
+end function
+
+white = function(str)
+    return "<color=#eeeeee>" + str + "</color>"
+end function
+
+blue = function(str)
+    return "<color=#85b8ff>" + str + "</color>"
+end function
+
+orange = function(str)
+    return "<color=#ffa500>" + str + "</color>"
+end function
+
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////////            FUNCTIONS            ////////
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+string.ToInt = function
+    if not is_valid_ip(self) then return self.to_int
+
+    parts = self.split("\.")
+
+    result = 0
+    for i in range(0,3)
+        octet = parts[i].to_int
+
+        result = result + (octet * (256 ^ (3 - i)))
+    end for
+
+    return result
+end function
+
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////////              CLASS              ////////
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+DevicePort = {
+    "classID": "DevicePort",
+    "num": null,
+    "status": null,
+    "info": null,
+    "lan": null,
+    "class": null,
+    "key": null,
+    "sortKey": null,
+}
+
+DevicePort.New = function(num, status, info, lan)
+    result = new self
+
+    result.num = num
+    result.status = status
+    result.info = info
+    result.lan = lan
+
+    result.key = lan + "|" + info
+
+    if lan[:2] == "10" then result.class = "a"
+    if lan[:3] == "172" then result.class = "b"
+    if lan[:3] == "192" then result.class = "c"
+
+    result.sortKey = lan.ToInt
+
+    return result
+end function
+
+DevicePort.ToString = function
+    return "<b>" + self.num + " " + self.status + " " + self.info + " " + self.lan + "</b>"
+end function
+
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////////              BEGIN              ////////
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+outputBuffer = []
+title = blue("<size=120%><voffset=1.2em><b>NMAP v1.0-beta</b></voffset></size>")
+
+print title
+print white("[RECON] Let's find out about your target...")
+
+if params.len == 1 then
+    address = params[0]
+else
+    address = user_input("Please enter an IP address: ")
+end if
+
+if not is_valid_ip(address) then exit(red("[Error] Invalid IP Address"))
+
+isLan = is_lan_ip(address)
+
+outputBuffer.push(title)
+outputBuffer.push(white("<size=110%><b>" + address + "</b></size>" + char(10)))
+
+if isLan then
+    router = get_router
+else
+    router = get_router(address)
+
+    lines = whois(address).split("\n")
+
+    info = []
+
+    info.push("<b>Domain Name .............. " + lines[0].split(": ")[1] + "</b>")
+    info.push("<b>Administrative Contact ... " + lines[1].split(": ")[1] + "</b>")
+    info.push("<b>Email Address ............ " + lines[2].split(": ")[1] + "</b>")
+    info.push("<b>Phone Number ............. " + lines[3].split(": ")[1] + "</b>")
+
+    outputBuffer.push(blue("<voffset=0.5em><b>WHOIS</b></voffset>") + char(10) + info.join(char(10)))
+    outputBuffer.push(char(10))
+end if
+
+portInfo = []
+portInfo.push("<b>PORT " + blue("STATE") + " SERVICE VERSION LAN</b>")
+
+routed = router.used_ports
+devices = router.devices_lan_ip.sort
+
+devicePorts = {}
+
+dPort = DevicePort.New(0, green("[open]"), "kernel " + router.kernel_version, router.local_ip)
+
+devicePorts[dPort.key] = dPort
+
+for device in devices
+    for port in router.device_ports(device)
+        num = port.port_number
+        isClosed = port.is_closed
+        lan = port.get_lan_ip
+        info = router.port_info(port)
+
+        if not isClosed then
+            status = orange("[internal]")
+
+            for rPort in routed
+                if rPort.get_lan_ip == lan and router.port_info(rPort) == info then
+                    if rPort.port_number == num then
+                        status = green("[open]")
+                    else
+                        status = green("[routed->" + port.port_number + "]")
+                        num = rPort.port_number
+                    end if
+                    break
+                end if
+            end for
+        else
+            status = red("[closed]")
+        end if
+        
+        dPort = DevicePort.New(num, status, info, lan)
+
+        if not devicePorts.hasIndex(dPort.key) or dPort.status.indexOf("routed") != null then
+            devicePorts[dPort.key] = dPort
+        end if
+    end for
+end for
+
+dPorts = []
+
+for idx in devicePorts.indexes
+    dPorts.push(devicePorts[idx])
+end for
+
+dPorts.sort("sortKey")
+
+for dPort in dPorts
+    if dPort.class == "c" then portInfo.push(dPort.ToString)
+end for
+
+for dPort in dPorts
+    if dPort.class == "b" then portInfo.push(dPort.ToString)
+end for
+
+for dPort in dPorts
+    if dPort.class == "a" then portInfo.push(dPort.ToString)
+end for
+
+formatted = format_columns(portInfo.join(char(10))).split("\n")
+formatted[0] = blue("<voffset=0.5em>" + formatted[0] + "</voffset>")
+
+outputBuffer = outputBuffer + formatted
+
+print outputBuffer.join(char(10)), 1
