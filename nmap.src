@@ -113,9 +113,6 @@ else
     router = get_router(address)
 end if
 
-outputBuffer.push(title)
-outputBuffer.push(white("<size=110%><b>" + router.public_ip + "</b></size>" + char(10)))
-
 lines = whois(router.public_ip).split("\n")
 
 info = []
@@ -124,6 +121,14 @@ info.push("<b>Domain Name .............. " + lines[0].split(": ")[1] + "</b>")
 info.push("<b>Administrative Contact ... " + lines[1].split(": ")[1] + "</b>")
 info.push("<b>Email Address ............ " + lines[2].split(": ")[1] + "</b>")
 info.push("<b>Phone Number ............. " + lines[3].split(": ")[1] + "</b>")
+
+outputBuffer.push(title)
+if lines.len == 5 then
+    outputBuffer.push(white("<size=110%><b>" + router.public_ip + " " + blue(lines[4]) + "</b></size>" + char(10)))
+else
+    outputBuffer.push(white("<size=110%><b>" + router.public_ip + "</b></size>" + char(10)))
+end if
+
 
 outputBuffer.push(blue("<voffset=0.5em><b>WHOIS</b></voffset>") + char(10) + info.join(char(10)))
 outputBuffer.push(char(10))
