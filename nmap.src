@@ -94,12 +94,12 @@ end function
 outputBuffer = []
 title = blue("<size=120%><voffset=1.2em><b>NMAP v1.0-beta</b></voffset></size>")
 
-print title
-print white("[RECON] Let's find out about your target...")
-
 if params.len == 1 then
     address = params[0]
 else
+    print title
+    print white("[RECON] Let's find out about your target...")
+
     address = user_input("Please enter an IP address: ")
 end if
 
