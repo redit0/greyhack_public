@@ -114,19 +114,19 @@ if isLan then
     router = get_router
 else
     router = get_router(address)
-
-    lines = whois(address).split("\n")
-
-    info = []
-
-    info.push("<b>Domain Name .............. " + lines[0].split(": ")[1] + "</b>")
-    info.push("<b>Administrative Contact ... " + lines[1].split(": ")[1] + "</b>")
-    info.push("<b>Email Address ............ " + lines[2].split(": ")[1] + "</b>")
-    info.push("<b>Phone Number ............. " + lines[3].split(": ")[1] + "</b>")
-
-    outputBuffer.push(blue("<voffset=0.5em><b>WHOIS</b></voffset>") + char(10) + info.join(char(10)))
-    outputBuffer.push(char(10))
 end if
+
+lines = whois(router.public_ip).split("\n")
+
+info = []
+
+info.push("<b>Domain Name .............. " + lines[0].split(": ")[1] + "</b>")
+info.push("<b>Administrative Contact ... " + lines[1].split(": ")[1] + "</b>")
+info.push("<b>Email Address ............ " + lines[2].split(": ")[1] + "</b>")
+info.push("<b>Phone Number ............. " + lines[3].split(": ")[1] + "</b>")
+
+outputBuffer.push(blue("<voffset=0.5em><b>WHOIS</b></voffset>") + char(10) + info.join(char(10)))
+outputBuffer.push(char(10))
 
 portInfo = []
 portInfo.push("<b>PORT " + blue("STATE") + " SERVICE VERSION LAN</b>")
