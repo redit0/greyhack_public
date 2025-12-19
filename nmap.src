@@ -103,7 +103,7 @@ else
     address = user_input(white("<b>Please enter an IP address:</b> "))
 end if
 
-if not is_valid_ip(address) then exit(red("[Error] Invalid IP Address"))
+if not is_valid_ip(address) then exit(red("<b>[Error] Invalid IP Address</b>"))
 
 isLan = is_lan_ip(address)
 
@@ -112,6 +112,8 @@ if isLan then
 else
     router = get_router(address)
 end if
+
+if not router then exit(red("<b>[Error] Address Unreachable</b>"))
 
 lines = whois(router.public_ip).split("\n")
 
