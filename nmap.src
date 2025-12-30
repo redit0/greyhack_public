@@ -24,13 +24,17 @@ orange = function(str)
     return "<color=#ffa500>" + str + "</color>"
 end function
 
+gray = function(str)
+    return "<color=#666666>" + str + "</color>"
+end function
+
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
 ////////            FUNCTIONS            ////////
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
 
-string.ToInt = function
+string.toInt = function
     if not is_valid_ip(self) then return self.to_int
 
     parts = self.split("\.")
@@ -76,7 +80,9 @@ DevicePort.New = function(num, status, info, lan)
     if lan[:3] == "172" then result.class = "b"
     if lan[:3] == "192" then result.class = "c"
 
-    result.sortKey = lan.ToInt
+    result.sortKey = lan.toInt
+
+    if result.num == "-" then result.sortKey = "z" + result.sortKey
 
     return result
 end function
@@ -109,8 +115,11 @@ isLan = is_lan_ip(address)
 
 if isLan then
     router = get_router
+    lanRouter = get_router(address)
+    if not lanRouter then lanRouter = router
 else
     router = get_router(address)
+    lanRouter = router
 end if
 
 if not router then exit(red("<b>[Error] Address Unreachable</b>"))
@@ -119,10 +128,12 @@ lines = whois(router.public_ip).split("\n")
 
 info = []
 
-info.push("<b>Domain Name .............. " + lines[0].split(": ")[1] + "</b>")
-info.push("<b>Administrative Contact ... " + lines[1].split(": ")[1] + "</b>")
-info.push("<b>Email Address ............ " + lines[2].split(": ")[1] + "</b>")
-info.push("<b>Phone Number ............. " + lines[3].split(": ")[1] + "</b>")
+info.push("<b>Domain Name ................ " + lines[0].split(": ")[1] + "</b>")
+info.push("<b>Administrative Contact ..... " + lines[1].split(": ")[1] + "</b>")
+info.push("<b>Email Address .............. " + lines[2].split(": ")[1] + "</b>")
+info.push("<b>Phone Number ............... " + lines[3].split(": ")[1] + "</b>")
+info.push("<b>Wireless Network (ESSID) ... " + lanRouter.essid_name + "</b>")
+info.push("<b>BSSID ...................... " + lanRouter.bssid_name + "</b>")
 
 outputBuffer.push(title)
 if lines.len == 5 then
@@ -135,11 +146,31 @@ end if
 outputBuffer.push(blue("<voffset=0.5em><b>WHOIS</b></voffset>") + char(10) + info.join(char(10)))
 outputBuffer.push(char(10))
 
+if lanRouter.firewall_rules then
+    lines = ["<b>" + blue("ACTION") + " PORT SOURCE DESTINATION</b>"]
+
+    for line in lanRouter.firewall_rules
+        parts = line.split(" ")
+
+        if parts[0] == "DENY" then parts[0] = red("DENY")
+        if parts[0] == "ALLOW" then parts[0] = green("ALLOW")
+        lines.push("<b>" + parts.join(" ") + "</b>")
+    end for
+
+    formatted = format_columns(lines.join(char(10))).split(char(10))
+    formatted[0] = blue("<voffset=0.5em>" + formatted[0] + "</voffset>")
+
+    outputBuffer.push(blue("<size=120%><voffset=0.5em><b>Firewall Rules</b></voffset></size>"))
+    outputBuffer = outputBuffer + formatted
+    outputBuffer.push(char(10))
+end if
+
 portInfo = []
 portInfo.push("<b>PORT " + blue("STATE") + " SERVICE VERSION LAN</b>")
 
 routed = router.used_ports
-devices = router.devices_lan_ip.sort
+
+devices = router.devices_lan_ip
 
 devicePorts = {}
 
@@ -148,36 +179,41 @@ dPort = DevicePort.New(0, green("[open]"), "kernel " + router.kernel_version, ro
 devicePorts[dPort.key] = dPort
 
 for device in devices
-    for port in router.device_ports(device)
-        num = port.port_number
-        isClosed = port.is_closed
-        lan = port.get_lan_ip
-        info = router.port_info(port)
+    if router.device_ports(device) and router.device_ports(device) isa list then
+        for port in router.device_ports(device)
+            num = port.port_number
+            isClosed = port.is_closed
+            lan = port.get_lan_ip
+            info = router.port_info(port)
 
-        if not isClosed then
-            status = orange("[internal]")
+            if not isClosed then
+                status = orange("[internal]")
 
-            for rPort in routed
-                if rPort.get_lan_ip == lan and router.port_info(rPort) == info then
-                    if rPort.port_number == num then
-                        status = green("[open]")
-                    else
-                        status = green("[routed->" + port.port_number + "]")
-                        num = rPort.port_number
+                for rPort in routed
+                    if rPort.get_lan_ip == lan and router.port_info(rPort) == info then
+                        if rPort.port_number == num then
+                            status = green("[open]")
+                        else
+                            status = green("[routed->" + port.port_number + "]")
+                            num = rPort.port_number
+                        end if
+                        break
                     end if
-                    break
-                end if
-            end for
-        else
-            status = red("[closed]")
-        end if
-        
-        dPort = DevicePort.New(num, status, info, lan)
+                end for
+            else
+                status = red("[closed]")
+            end if
+            
+            dPort = DevicePort.New(num, status, info, lan)
 
-        if not devicePorts.hasIndex(dPort.key) or dPort.status.indexOf("routed") != null then
-            devicePorts[dPort.key] = dPort
-        end if
-    end for
+            if not devicePorts.hasIndex(dPort.key) or dPort.status.indexOf("routed") != null then
+                devicePorts[dPort.key] = dPort
+            end if
+        end for
+    else
+        dPort = DevicePort.New("-", gray("-"), "- -", device)
+        if not devicePorts.hasIndex(dPort.key) then devicePorts[dPort.key] = dPort
+    end if
 end for
 
 dPorts = []
