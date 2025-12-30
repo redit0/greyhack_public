@@ -232,7 +232,7 @@ dPort = DevicePort.New(0, green("[open]"), "kernel " + router.kernel_version, ro
 devicePorts[dPort.key] = dPort
 
 for device in devices
-    if router.device_ports(device) and router.device_ports(device) isa list then
+    if router.device_ports(device) isa list and router.device_ports(device).len > 0 then
         for port in router.device_ports(device)
             num = port.port_number
             isClosed = port.is_closed
