@@ -1,3 +1,12 @@
+///////////////////////////////////////////////////
+///////////////////////////////////////////////////
+////////              OPTIONS              ////////
+///////////////////////////////////////////////////
+///////////////////////////////////////////////////
+
+// Enable this to perform a full recursive scan of all network devices when running this against a LAN IP Address
+FullScan = 1
+
 //////////////////////////////////////////////////
 //////////////////////////////////////////////////
 ////////              COLORS              ////////
@@ -47,6 +56,46 @@ string.toInt = function
     end for
 
     return result
+end function
+
+getDevices = function(router)
+    deviceList = []
+
+    get_devices = function(router)
+        if router == null then return
+
+        ip = router.local_ip
+
+        if deviceList.indexOf(ip) == null then deviceList.push(ip)
+
+        devices = router.devices_lan_ip
+
+        for device in devices
+            if device != ip then
+                type = getType(device)
+
+                if type == "router" and deviceList.indexOf(device) == null then
+                    deviceList.push(device)
+                    get_devices(get_router(device))
+                else if type == "switch" and deviceList.indexOf(device) == null then
+                    deviceList.push(device)
+                    get_devices(get_switch(device))
+                else if type == "device" and deviceList.indexOf(device) == null then
+                    deviceList.push(device)
+                end if
+            end if
+        end for
+    end function
+
+    getType = function(ip)
+        if get_switch(ip) then return "switch"
+        if get_router(ip) then return "router"
+        return "device"
+    end function
+
+    get_devices(router)
+
+    return deviceList
 end function
 
 /////////////////////////////////////////////////
@@ -170,7 +219,11 @@ portInfo.push("<b>PORT " + blue("STATE") + " SERVICE VERSION LAN</b>")
 
 routed = router.used_ports
 
-devices = router.devices_lan_ip
+if isLan and FullScan then
+    devices = getDevices(router)
+else
+    devices = router.devices_lan_ip
+end if
 
 devicePorts = {}
 
@@ -225,15 +278,27 @@ end for
 dPorts.sort("sortKey")
 
 for dPort in dPorts
-    if dPort.class == "c" then portInfo.push(dPort.ToString)
+    if dPort.class == "c" and dPort.sortKey[0] != "z" then portInfo.push(dPort.ToString)
 end for
 
 for dPort in dPorts
-    if dPort.class == "b" then portInfo.push(dPort.ToString)
+    if dPort.class == "b" and dPort.sortKey[0] != "z" then portInfo.push(dPort.ToString)
 end for
 
 for dPort in dPorts
-    if dPort.class == "a" then portInfo.push(dPort.ToString)
+    if dPort.class == "a" and dPort.sortKey[0] != "z" then portInfo.push(dPort.ToString)
+end for
+
+for dPort in dPorts
+    if dPort.class == "c" and dPort.sortKey[0] == "z" then portInfo.push(dPort.ToString)
+end for
+
+for dPort in dPorts
+    if dPort.class == "b" and dPort.sortKey[0] == "z" then portInfo.push(dPort.ToString)
+end for
+
+for dPort in dPorts
+    if dPort.class == "a" and dPort.sortKey[0] == "z" then portInfo.push(dPort.ToString)
 end for
 
 formatted = format_columns(portInfo.join(char(10))).split("\n")
