@@ -153,12 +153,14 @@ if params.len == 1 then
     address = params[0]
 else
     print title
-    print white("<b>[RECON] Let's find out about your target...</b>")
-
-    address = user_input(white("<b>Please enter an IP address:</b> "))
+    address = user_input(white("<b>Please enter an IP address or URL:</b> "))
 end if
 
-if not is_valid_ip(address) then exit(red("<b>[Error] Invalid IP Address</b>"))
+if address[:3] == "www" then
+    address = nslookup(address)
+end if
+
+if not is_valid_ip(address) then exit(red("<b>[Error] Invalid Address</b>"))
 
 isLan = is_lan_ip(address)
 
