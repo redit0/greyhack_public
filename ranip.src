@@ -1,0 +1,54 @@
+ranip = function()
+    reserved = [
+        {"from":0,"to":16777215},
+        {"from":167772160,"to":184549375},
+        {"from":1681915904,"to":1686110207},
+        {"from":2130706432,"to":2147483647},
+        {"from":2851995648,"to":2852061183},
+        {"from":2886729728,"to":2887778303},
+        {"from":3221225472,"to":3221225727},
+        {"from":3221225984,"to":3221226239},
+        {"from":3227017984,"to":3323068416},
+        {"from":3325256704,"to":3325256959},
+        {"from":3405803776,"to":3405804031},
+        {"from":3758096384,"to":4026531839},
+        {"from":4026531840,"to":4294967295},
+    ]
+
+    int_to_ip = function(num)
+        if num < 0 or num > 4294967295 then return null
+        
+        parts = []
+        for i in range(0, 3)
+            parts.push(floor(num / (256 ^ (3 - i))) % 256)
+        end for
+        
+        return parts.join(".")
+    end function
+
+    router = null
+
+    while not router
+        num = floor(rnd * 4294967295)
+
+        if num >= reserved[0].from and num <= reserved[0].to then continue
+        if num >= reserved[1].from and num <= reserved[1].to then continue
+        if num >= reserved[2].from and num <= reserved[2].to then continue
+        if num >= reserved[3].from and num <= reserved[3].to then continue
+        if num >= reserved[4].from and num <= reserved[4].to then continue
+        if num >= reserved[5].from and num <= reserved[5].to then continue
+        if num >= reserved[6].from and num <= reserved[6].to then continue
+        if num >= reserved[7].from and num <= reserved[7].to then continue
+        if num >= reserved[8].from and num <= reserved[8].to then continue
+        if num >= reserved[9].from and num <= reserved[9].to then continue
+        if num >= reserved[10].from and num <= reserved[10].to then continue
+        if num >= reserved[11].from and num <= reserved[11].to then continue
+        if num >= reserved[12].from and num <= reserved[12].to then continue
+
+        router = get_router(int_to_ip(num))
+    end while
+
+    return router.public_ip
+end function
+
+print ranip
