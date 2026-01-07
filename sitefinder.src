@@ -1,0 +1,126 @@
+green = function(str)
+    return "<color=#337733><b>" + str + "</b></color>"
+end function
+
+red = function(str)
+    return "<color=#c30000><b>" + str + "</b></color>"
+end function
+
+white = function(str)
+    return "<color=#eeeeee><b>" + str + "</b></color>"
+end function
+
+blue = function(str)
+    return "<color=#85b8ff><b>" + str + "</b></color>"
+end function
+
+sites = ["shop","hackshop","bank","mail"].sort
+
+reserved = [
+    {"from":0,"to":16777215},
+    {"from":167772160,"to":184549375},
+    {"from":1681915904,"to":1686110207},
+    {"from":2130706432,"to":2147483647},
+    {"from":2851995648,"to":2852061183},
+    {"from":2886729728,"to":2887778303},
+    {"from":3221225472,"to":3221225727},
+    {"from":3221225984,"to":3221226239},
+    {"from":3227017984,"to":3323068416},
+    {"from":3325256704,"to":3325256959},
+    {"from":3405803776,"to":3405804031},
+    {"from":3758096384,"to":4026531839},
+    {"from":4026531840,"to":4294967295},
+]
+
+int_to_ip = function(num)
+    if num < 0 or num > 4294967295 then return null
+    
+    parts = []
+    for i in range(0, 3)
+        parts.push(floor(num / (256 ^ (3 - i))) % 256)
+    end for
+    
+    return parts.join(".")
+end function
+
+if params.len == 0 then
+    choice = ""
+
+    while choice.to_int isa string
+        print(blue("What kind of website would you like to try to find?") + char(10), 1)
+        
+        prompt = ""
+
+        for idx in range(0, sites.len-1)
+            prompt = prompt + white(idx + "." + char(9) + sites[idx]) + char(10)
+        end for
+
+        prompt = prompt + char(10) + blue("Enter a number from the list above (or ""exit"" to exit): <b>")
+
+        choice = user_input(prompt, 0, 0, 0)
+
+        if choice.lower == "exit" then exit(white("Exiting..."))
+
+        if choice.to_int isa string then print red("[Error] Invalid selection.")
+    end while
+
+    site = sites[choice.to_int]
+else
+    site = params[0]
+end if
+
+if sites.indexOf(site) == null then exit(red("[Error] Invalid site name [" + site + "].  Must be one of: " + sites.join(", ")))
+
+valid = 0
+while not valid
+    result = ""
+    while result == ""
+        router = null
+
+        while not router
+            num = floor(rnd * 4294967295)
+
+            if num >= reserved[0].from and num <= reserved[0].to then continue
+            if num >= reserved[1].from and num <= reserved[1].to then continue
+            if num >= reserved[2].from and num <= reserved[2].to then continue
+            if num >= reserved[3].from and num <= reserved[3].to then continue
+            if num >= reserved[4].from and num <= reserved[4].to then continue
+            if num >= reserved[5].from and num <= reserved[5].to then continue
+            if num >= reserved[6].from and num <= reserved[6].to then continue
+            if num >= reserved[7].from and num <= reserved[7].to then continue
+            if num >= reserved[8].from and num <= reserved[8].to then continue
+            if num >= reserved[9].from and num <= reserved[9].to then continue
+            if num >= reserved[10].from and num <= reserved[10].to then continue
+            if num >= reserved[11].from and num <= reserved[11].to then continue
+            if num >= reserved[12].from and num <= reserved[12].to then continue
+
+            router = get_router(int_to_ip(num))
+        end while
+
+        ports = []
+
+        for port in router.used_ports
+            if not port.is_closed then ports.push(port.port_number)
+        end for
+
+        if site == "hackshop" and ports.indexOf(1542) != null and ports.indexOf(80) != null then result = router.public_ip
+        if site == "bank" and ports.indexOf(141) != null and ports.indexOf(80) != null then result = router.public_ip
+        if site == "mail" and ports.indexOf(25) != null and ports.indexOf(80) != null then result = router.public_ip
+        if site == "shop" and ports.indexOf(1542) == null and ports.indexOf(141) == null and ports.indexOf(25) == null and ports.indexOf(80) != null then result = router.public_ip
+    end while
+
+    lines = whois(result).split("\n")
+    url = lines[0].split(": ")[1]
+
+    get_shell.launch("/usr/bin/Browser.exe", router.public_ip)
+
+    msg = blue("This MAY be a " + site + " site:") + char(10)*2
+    msg = msg + white(char(9) + "url:     " + url) + char(10)
+    msg = msg + white(char(9) + "ip:      " + router.public_ip) + char(10)
+
+    print(msg, 1)
+
+    answer = user_input(blue("If it is, you can exit or enter Y here.  If you would like to try again, press enter. ") + "<b>", 0, 0, 0)
+
+    if answer.lower == "y" or answer.lower == "exit" then valid = 1
+end while
