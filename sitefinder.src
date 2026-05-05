@@ -14,34 +14,51 @@ blue = function(str)
     return "<color=#85b8ff><b>" + str + "</b></color>"
 end function
 
-sites = ["shop","hackshop","bank","mail"].sort
+ranip = function()
+    reserved = [
+        {"from": 1681915904, "to": 1686110207},     // 100.64.0.0 - 100.127.255.255
+        {"from": 2851995648, "to": 2852061183},     // 169.254.0.0 - 169.254.255.255
+        {"from": 2886729728, "to": 2887778303},     // 172.16.0.0 - 172.31.255.255
+        {"from": 3221225472, "to": 3221225727},     // 192.0.0.0 - 192.0.0.255
+        {"from": 3221225984, "to": 3221226239},     // 192.0.2.0 - 192.0.2.255
+        {"from": 3227017984, "to": 3227018239},     // 192.88.99.0 - 192.88.99.255
+        {"from": 3323068416, "to": 3323199487},     // 198.18.0.0 - 198.19.255.255
+        {"from": 3325256704, "to": 3325256959},     // 198.51.100.0 - 198.51.100.255
+        {"from": 3405803776, "to": 3405804031},     // 203.0.113.0 - 203.0.113.255
+    ]
 
-reserved = [
-    {"from":0,"to":16777215},
-    {"from":167772160,"to":184549375},
-    {"from":1681915904,"to":1686110207},
-    {"from":2130706432,"to":2147483647},
-    {"from":2851995648,"to":2852061183},
-    {"from":2886729728,"to":2887778303},
-    {"from":3221225472,"to":3221225727},
-    {"from":3221225984,"to":3221226239},
-    {"from":3227017984,"to":3323068416},
-    {"from":3325256704,"to":3325256959},
-    {"from":3405803776,"to":3405804031},
-    {"from":3758096384,"to":4026531839},
-    {"from":4026531840,"to":4294967295},
-]
+    is_reserved = function(num)
+        for r in reserved
+            if num >= r.from and num <= r.to then return true
+        end for
+        return false
+    end function
 
-int_to_ip = function(num)
-    if num < 0 or num > 4294967295 then return null
-    
-    parts = []
-    for i in range(0, 3)
-        parts.push(floor(num / (256 ^ (3 - i))) % 256)
-    end for
-    
-    return parts.join(".")
+    router = null
+
+    while not router
+        a = floor(rnd * 256)
+
+        if a == 0 then continue
+        if a == 10 then continue
+        if a == 127 then continue
+        if a >= 224 then continue
+
+        b = floor(rnd * 256)
+        c = floor(rnd * 256)
+        d = floor(rnd * 256)
+
+        num = a * 16777216 + b * 65536 + c * 256 + d
+        if is_reserved(num) then continue
+
+        addr = a + "." + b + "." + c + "." + d
+        router = get_router(addr)
+    end while
+
+    return router
 end function
+
+sites = ["shop","hackshop","bank","mail"].sort
 
 if params.len == 0 then
     choice = ""
@@ -55,7 +72,7 @@ if params.len == 0 then
             prompt = prompt + white(idx + "." + char(9) + sites[idx]) + char(10)
         end for
 
-        prompt = prompt + char(10) + blue("Enter a number from the list above (or ""exit"" to exit): <b>")
+        prompt = prompt + char(10) + blue("Enter a number from the list above") + char(10) + blue("<size=80%>(or ""exit"" to exit)</size>: ")
 
         choice = user_input(prompt, 0, 0, 0)
 
@@ -75,27 +92,7 @@ valid = 0
 while not valid
     result = ""
     while result == ""
-        router = null
-
-        while not router
-            num = floor(rnd * 4294967295)
-
-            if num >= reserved[0].from and num <= reserved[0].to then continue
-            if num >= reserved[1].from and num <= reserved[1].to then continue
-            if num >= reserved[2].from and num <= reserved[2].to then continue
-            if num >= reserved[3].from and num <= reserved[3].to then continue
-            if num >= reserved[4].from and num <= reserved[4].to then continue
-            if num >= reserved[5].from and num <= reserved[5].to then continue
-            if num >= reserved[6].from and num <= reserved[6].to then continue
-            if num >= reserved[7].from and num <= reserved[7].to then continue
-            if num >= reserved[8].from and num <= reserved[8].to then continue
-            if num >= reserved[9].from and num <= reserved[9].to then continue
-            if num >= reserved[10].from and num <= reserved[10].to then continue
-            if num >= reserved[11].from and num <= reserved[11].to then continue
-            if num >= reserved[12].from and num <= reserved[12].to then continue
-
-            router = get_router(int_to_ip(num))
-        end while
+        router = ranip
 
         ports = []
 
@@ -120,7 +117,7 @@ while not valid
 
     print(msg, 1)
 
-    answer = user_input(blue("If it is, you can exit or enter Y here.  If you would like to try again, press enter. ") + "<b>", 0, 0, 0)
+    answer = user_input(blue("If it is, you can exit or enter Y here.") + char(10) + blue("If you would like to try again, press enter. ") + char(10) + blue("> "), 0, 0, 0)
 
     if answer.lower == "y" or answer.lower == "exit" then valid = 1
 end while
