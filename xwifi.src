@@ -68,6 +68,10 @@ crypto = find(get_shell.host_computer.File("/"), "crypto.so", "b")[0]
 cryptools = include_lib(crypto.path)
 if not cryptools then exit(vars.red + "[Error] Could not find crypto.so" + vars.endcolor)
 
+if get_shell.host_computer.active_net_card != "WIFI" then
+	exit(vars.red + "[Error] The active_net_card is """ + get_shell.host_computer.active_net_card + """, it should be ""WIFI""." + vars.endcolor)
+end if
+
 airmonResult = airmon(cryptools, "start", "wlan0")
 
 if typeof(airmonResult) == "string" then

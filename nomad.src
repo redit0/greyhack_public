@@ -81,6 +81,9 @@ getLines = function()
 end function
 
 getBssid = function(name)
+    if get_shell.host_computer.active_net_card != "WIFI" then
+        exit(red("[Error] The active_net_card is """ + get_shell.host_computer.active_net_card + """, it should be ""WIFI""."))
+    end if
     networks = get_shell.host_computer.wifi_networks("wlan0")
 
     for network in networks
@@ -142,12 +145,12 @@ while true
     end while
 
     print(green("Connecting to " + network["name"] + "..."))
-
+    print 1
     lastNetwork = network["name"]
-
+    print 2
     bssid = getBssid(network["name"])
-
+    print 3
     get_shell.host_computer.connect_wifi("wlan0", bssid, network["name"], network["pass"])
-
+    print 4
     wait(interval)
 end while
